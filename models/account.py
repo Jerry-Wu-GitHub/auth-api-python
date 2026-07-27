@@ -30,21 +30,15 @@ class Account:
     def __init__(
         self,
         auth_client: AuthClient,
-        sid: Optional[str] = None,
         **kwargs
     ):
         """
         Args:
             auth_client: 用于向认证微服务发送网络请求。
-            sid: 用于登录的 Cookie 值。若提供，会覆盖 kwargs 中的同名 Cookie。
             kwargs: 传递给 auth_client.request 的其他参数
         """
         self.auth_client = auth_client
         self._kwargs = kwargs
-        if sid:
-            self._kwargs.setdefault("cookies", {}).update({
-                SESSION_COOKIE_NAME: sid
-            })
 
 
     def _get_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
