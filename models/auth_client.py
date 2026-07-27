@@ -12,7 +12,7 @@ from fastapi import HTTPException, Request, APIRouter
 from starlette import status
 from yarl import URL
 
-from ..config import SESSION_COOKIE_NAME, CONFIRMATION_API_NAME
+from ..config import CONFIRMATION_API_NAME
 from ..exceptions import AuthServerUnavailable, NotLoggedError
 from .account import Account
 from ..routes.api import router_getters
@@ -188,13 +188,9 @@ class AuthClient:
         2. 向认证服务发送需要权限的请求
         3. 若未登录，重定向到认证主页并附带 redirect 参数
         """
-        sid=request.cookies.get(SESSION_COOKIE_NAME)
-        if not sid:
-            self.redirect_to_auth(current_path)
-
         account = Account(
             auth_client=self,
-            sid=sid
+            cookies=request.cookies,
         )
 
         try:

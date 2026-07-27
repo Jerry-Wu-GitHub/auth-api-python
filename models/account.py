@@ -11,7 +11,6 @@ from typing import Any, Dict, Optional, TYPE_CHECKING
 import httpx
 from starlette import status
 
-from ..config import SESSION_COOKIE_NAME
 from ..exceptions import AuthServerError, NotLoggedError
 from .user import UserInfo, Preferences
 from ..utils.regex import COLOR_PATTERN
