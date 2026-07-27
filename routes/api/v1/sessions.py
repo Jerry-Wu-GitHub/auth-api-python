@@ -99,10 +99,24 @@ def get_router(
         kwargs: 其他传递给 http_clinet.request 的参数。
     """
     router = APIRouter(prefix="/sessions", tags=["Sessions"])
-    router.get(f"/{CONFIRMATION_API_NAME}")(partial(
-        set_cookie,
-        confirmation_url=confirmation_url,
-        http_clinet=http_clinet,
-        **kwargs
-    ))
+    @router.get(f"/{CONFIRMATION_API_NAME}")
+    async def set_cookie_endpoint(
+        state: str,
+        redirect_uri: str | None = None,
+    ) -> Response:
+        """
+        设置用户指定的 Cookie。
+
+        Args:
+            state: 登录凭证。
+            redirect_uri: 重定向目标。
+        """
+        return await set_cookie(
+            confirmation_url=confirmation_url,
+            state=state,
+            redirect_uri=redirect_uri,
+            http_clinet=http_clinet,
+            **kwargs
+        )
+
     return router
