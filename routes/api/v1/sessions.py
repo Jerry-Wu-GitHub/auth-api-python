@@ -67,16 +67,13 @@ async def set_cookie(
         response.status_code = 204
 
     for cookie in confirm_resp_data.get("cookies"):
-        if not (
-            (key := cookie.get("key")) and
-            (value := cookie.get("value"))
-        ):
+        if not (key := cookie.get("key")):
             continue
 
         set_session_cookie(
             response,
             key=key,
-            value=value,
+            value=cookie.get("value"),
             max_age=cookie.get("maxAge") or COOKIE_MAX_AGE,
         )
 
