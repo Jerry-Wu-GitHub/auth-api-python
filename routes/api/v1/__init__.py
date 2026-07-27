@@ -1,0 +1,13 @@
+from fastapi import APIRouter
+
+from ._common import API_VERSION, API_PREFIX
+from .sessions import get_router as get_session_router
+
+
+def get_router(*args, **kwargs) -> APIRouter:
+    router = APIRouter(prefix=f"/{API_VERSION}", tags=["Ver. 1"])
+    router.include_router(get_session_router(*args, **kwargs))
+    return router
+
+
+__all__ = ["get_router"]
