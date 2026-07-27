@@ -4,11 +4,12 @@
 
 from functools import partial
 import json
-from typing import Optional
+from typing import Optional, Union
 
 from fastapi import APIRouter, Response
 from fastapi.responses import RedirectResponse
 from httpx import AsyncClient
+from yarl import URL
 
 from ....exceptions import AuthServerError
 from ....utils.cookies import set_session_cookie
@@ -17,9 +18,9 @@ from ....config import CONFIRMATION_API_NAME, COOKIE_MAX_AGE
 
 
 async def set_cookie(
-    confirmation_url: str,
+    confirmation_url: Union[str, URL],
     state: str,
-    redirect_uri: str | None = None,
+    redirect_uri: Union[str, URL, None] = None,
     *,
     http_clinet: Optional[AsyncClient] = None,
     **kwargs
@@ -35,7 +36,7 @@ async def set_cookie(
         kwargs: 其他传递给 http_clinet.request 的参数。
     """
     kwargs["method"] = "POST"
-    kwargs["url"] = confirmation_url
+    kwargs["url"] = str(confirmation_url)
     kwargs.setdefault("params", {}).update({
         "state": state
     })
@@ -60,7 +61,7 @@ async def set_cookie(
         raise AuthServerError(f"Data not found: {confirm_resp_json}")
 
     if redirect_uri:
-        response = RedirectResponse(url=redirect_uri)
+        response = RedirectResponse(url=str(redirect_uri))
     else:
         response = Response()
         response.status_code = 204
@@ -102,7 +103,7 @@ def get_router(
     @router.get(f"/{CONFIRMATION_API_NAME}")
     async def set_cookie_endpoint(
         state: str,
-        redirect_uri: str | None = None,
+        redirect_uri: Union[str, URL, None] = None,
     ) -> Response:
         """
         设置用户指定的 Cookie。

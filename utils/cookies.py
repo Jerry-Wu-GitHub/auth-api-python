@@ -29,7 +29,7 @@ def set_session_cookie(
         key=SESSION_COOKIE_NAME,
         value=value,
         max_age=max_age,
-        domain=domain or DEFAULT_COOKIE_DOMAIN,
+        domain=domain,
         httponly=True,
         secure=True,
         samesite="Lax",

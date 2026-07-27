@@ -11,7 +11,7 @@ from .v1 import (
 def _wrapper(get_router: Callable[..., APIRouter]) -> Callable[..., APIRouter]:
     def get_api_router(*args, **kwargs) -> APIRouter:
         # 添加 /api 前缀
-        router = APIRouter(prefix=f"/api", tags=["API"])
+        router = APIRouter(prefix=f"/api")
         router.include_router(get_router(*args, **kwargs))
         return router
     return get_api_router

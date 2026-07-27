@@ -92,7 +92,7 @@ class AuthClient:
         get_router = router_getters[api_version]
         return get_router(
             confirmation_url=self.auth_api_base_url / "sessions" / CONFIRMATION_API_NAME,
-            http_clinet=self
+            http_clinet=self._http_client
         )
 
 
