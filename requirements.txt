@@ -1,0 +1,5 @@
+fastapi[standard]
+httpx
+pydantic
+starlette
+yarl
