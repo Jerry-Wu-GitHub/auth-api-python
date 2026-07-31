@@ -49,15 +49,11 @@ async def set_cookie(
 
     try:
         confirm_resp_json = confirm_resp.json()
-        confirm_resp_data = confirm_resp_json.get("data")
+        cookies = confirm_resp_json.get("data")
     except (json.decoder.JSONDecodeError, AttributeError) as error:
         raise AuthServerError(f"Unexcepted json string: {confirm_resp.text}") from error
 
-    if not (
-        confirm_resp_data and
-        isinstance(confirm_resp_data, dict) and
-        isinstance(confirm_resp_data.get("cookies"), list)
-    ):
+    if not (cookies and isinstance(cookies, list)):
         raise AuthServerError(f"Data not found: {confirm_resp_json}")
 
     if redirect_uri:
@@ -66,7 +62,7 @@ async def set_cookie(
         response = Response()
         response.status_code = 204
 
-    for cookie in confirm_resp_data.get("cookies"):
+    for cookie in cookies:
         if not (key := cookie.get("key")):
             continue
 
