@@ -13,7 +13,7 @@ from starlette import status
 from yarl import URL
 
 from ..config import CONFIRMATION_API_NAME
-from ..exceptions import AuthServerUnavailable, NotLoggedError
+from ..exceptions import AuthServerUnavailable, UnauthorizedException
 from .account import Account
 from ..routes.api import router_getters
 
@@ -202,7 +202,7 @@ class AuthClient:
                 detail="认证服务不可用"
             ) from error
 
-        except NotLoggedError:
+        except UnauthorizedException:
             # 未登录，重定向到认证主页
             self.redirect_to_auth(current_path)
 

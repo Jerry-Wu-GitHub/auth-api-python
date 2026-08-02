@@ -8,6 +8,12 @@ from typing import Literal, Optional
 from pydantic.dataclasses import dataclass
 from pydantic import Field
 
+from ..config import (
+    USERNAME_LENGTH_MIN, USERNAME_LENGTH_MAX,
+    PERMISSION_LEVEL_MIN, PERMISSION_LEVEL_MAX,
+    COLOR_PATTERN_STR, DEFAULT_PREFERENCES,
+)
+
 
 @dataclass(frozen=True)
 class UserInfo:
@@ -17,7 +23,16 @@ class UserInfo:
     )
 
     name: str = Field(
-        description="用户名，1-64 字符"
+        min_length=USERNAME_LENGTH_MIN,
+        max_length=USERNAME_LENGTH_MAX,
+        description=f"用户名，{USERNAME_LENGTH_MIN} ~ {USERNAME_LENGTH_MAX} 字符。"
+    )
+
+    permission_level: Optional[int] = Field(
+        ge=PERMISSION_LEVEL_MIN,
+        le=PERMISSION_LEVEL_MAX,
+        description=f"权限等级，范围为 {PERMISSION_LEVEL_MIN} ~ {PERMISSION_LEVEL_MAX}。值越大，权限越大。",
+        default=None
     )
 
     email: Optional[str] = Field(
@@ -25,12 +40,14 @@ class UserInfo:
         default=None
     )
 
-    created_at: datetime = Field(
-        description="注册时间"
+    created_at: Optional[datetime] = Field(
+        description="注册时间",
+        default=None
     )
 
-    last_login_at: datetime = Field(
-        description="最近一次登录时间"
+    last_login_at: Optional[datetime] = Field(
+        description="最近一次登录时间",
+        default=None
     )
 
 
@@ -41,12 +58,13 @@ class Preferences:
     """
     theme: Literal["dark", "light", "system"] = Field(
         description="主题模式，可选 'dark', 'light', 'system'",
-        default="system"
+        default=DEFAULT_PREFERENCES["theme"]
     )
 
     accent_color: str = Field(
         description="强调色，格式为 #rrggbb",
-        default="#4a90d9"  # 默认蓝色调
+        pattern=COLOR_PATTERN_STR,
+        default=DEFAULT_PREFERENCES["accent_color"]
     )
 
 
