@@ -13,9 +13,14 @@ from starlette import status
 from yarl import URL
 
 from ..config import CONFIRMATION_API_NAME
-from ..exceptions import AuthServerUnavailable, UnauthorizedException
+from ..exceptions import (
+    PermissionDeniedException,
+    UpstreamUnavailableException,
+    UnauthorizedException,
+)
 from .account import Account
 from ..routes.api import router_getters
+from .user import UserInfo
 
 
 class AuthClient:
@@ -24,17 +29,18 @@ class AuthClient:
 
     使用方法:
         auth_client = AuthClient(
-            base_url="https://myapp.ms.show",
-            auth_homepage="https://auth.ms.show"
+            homepage="https://myapp.com",
+            auth_homepage="https://auth.com"
         )
         router = APIRouter(dependencies=[Depends(auth_client.get_auth_dependency("/some-path"))])
     """
 
     def __init__(
         self,
-        base_url: Union[str, URL],
+        homepage: Union[str, URL],
         auth_homepage: Union[str, URL],
         *,
+        user_id_path_key: str = "user_id",
         auth_api_version: str = "v1",
         http_client: Optional[httpx.AsyncClient] = None,
         **kwargs
@@ -43,17 +49,19 @@ class AuthClient:
         初始化认证客户端。
 
         Args:
-            base_url: 当前微服务的 Base URL
+            homepage: 当前微服务的 Base URL
             auth_homepage: 认证微服务主页 URL
+            user_id_path_key: 路径中表示 user_id 的占位符名
             auth_api_version: 认证微服务的版本
             http_client (httpx.AsyncClient): An HTTP client similar to `httpx.AsyncClient`, used for sending requests.
             kwargs: The initialization parameters passed to `http_client`.
         """
-        self.base_url: URL = URL(base_url)
+        self.homepage: URL = URL(homepage)
+        self.user_id_path_key = user_id_path_key
 
         # 认证微服务
         self.auth_homepage: URL = URL(auth_homepage)
-        self.auth_api_base_url = self.auth_homepage / f"api/{auth_api_version}"
+        self.auth_api_base_url = self.auth_homepage / "api" / auth_api_version
 
         # HTTP Client
         self._http_client_is_local = http_client is None
@@ -80,16 +88,29 @@ class AuthClient:
             await self._http_client.aclose()
 
 
-    def get_router(self, api_version: str) -> APIRouter:
+    def get_router(self, api_version: Optional[str] = None) -> APIRouter:
         """
         返回需要注册到根路由的 API URL。
+
+        Args:
+            api_version: 指定要注册的路由的版本。
+                如果缺省，则全部注册。
         """
+        if api_version is None:
+            router = APIRouter()
+            # 所有版本都注册
+            for version in router_getters:
+                router.include_router(self.get_router(version))
+            return router
+
+        # 检查版本的存在性
         if api_version not in router_getters:
             raise KeyError(
                 f"Version not found: {api_version}. "
                 f"Available versions: {list(router_getters.keys())}"
             )
         get_router = router_getters[api_version]
+
         return get_router(
             confirmation_url=self.auth_api_base_url / "sessions" / CONFIRMATION_API_NAME,
             http_clinet=self._http_client
@@ -112,54 +133,13 @@ class AuthClient:
             kwargs: 传递给 `http_client.request` 的其他参数。
 
         Raises:
-            AuthServerUnavailable: 如果向认证微服务发送请求失败。
+            UpstreamUnavailableException: 如果向认证微服务发送请求失败。
         """
         kwargs["url"] = str(self._get_auth_api_url(subpath))
         try:
             return await self._http_client.request(**kwargs)
         except Exception as error:
-            raise AuthServerUnavailable("认证服务不可用") from error
-
-
-    async def _verify_auth(self, current_path: str, request: Request) -> None:
-        """
-        验证登录态依赖：
-        - 从请求中提取 jerry_sid Cookie
-        - 向认证服务请求用户信息
-        - 若未登录，重定向到认证主页并附带 redirect 参数
-        """
-        # 提取 Cookie
-        cookies = {}
-        if "jerry_sid" in request.cookies:
-            cookies["jerry_sid"] = request.cookies["jerry_sid"]
-
-        # 调用认证服务
-        try:
-            resp = await self.request(
-                "users/me",
-                method="GET",
-                cookies=cookies,
-                follow_redirects=False
-            )
-        except Exception as error:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="认证服务不可用"
-            ) from error
-
-        if resp.status_code == status.HTTP_200_OK:
-            # 登录有效，可将用户信息注入 request.state（可选）
-            user_data = resp.json().get("data")
-            request.state.user = user_data
-            return
-
-        # 未登录或其他错误，重定向到认证主页
-        full_redirect_url = self.base_url / current_path
-        login_url = self.auth_homepage.with_query({"redirect": str(full_redirect_url)})
-        raise HTTPException(
-            status_code=status.HTTP_302_FOUND,
-            headers={"Location": login_url},
-        )
+            raise UpstreamUnavailableException("认证服务不可用") from error
 
 
     def redirect_to_auth(
@@ -169,24 +149,34 @@ class AuthClient:
         """
         引发一个重定向到登录页面的 HTTPException。
         """
-        full_redirect_url = self.base_url / current_path
-        login_url = self.auth_homepage.with_query({"redirect": str(full_redirect_url)})
+        redirect_url = self.homepage / current_path
+        login_url = self.auth_homepage.with_query({"redirect": str(redirect_url)})
         raise HTTPException(
             status_code=status.HTTP_302_FOUND,
             headers={"Location": login_url},
         )
 
 
-    async def _get_current_account(
+    # ==== FastAPI 依赖函数 ====
+
+    async def get_current_account(
         self,
-        current_path: str,
         request: Request,
+        min_permission_level_high: Optional[int] = None,
     ) -> Account:
         """
-        验证登录态依赖：根据请求中的 sid，获得账号对象。
-        1. 从请求中提取 jerry_sid Cookie
-        2. 向认证服务发送需要权限的请求
-        3. 若未登录，重定向到认证主页并附带 redirect 参数
+        FastAPI 依赖函数，用于验证请求的登录态与权限等级。
+
+        Args:
+            request: FastAPI 请求对象
+            min_permission_level: 大权限等级下限，用户等级需 >= 该值才可通过；为 None 时不校验权限
+
+        Returns:
+            含有当前登录态的 Account 对象。
+
+        Raises:
+            UpstreamUnavailableException: 认证服务不可用。
+            HTTPException: 未登录时引发重定向；权限不足时返回 403。
         """
         account = Account(
             auth_client=self,
@@ -194,29 +184,126 @@ class AuthClient:
         )
 
         try:
-            await account.keep_alive()
-
-        except AuthServerUnavailable as error:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="认证服务不可用"
-            ) from error
+            user_info = await account.get_user_info()
 
         except UnauthorizedException:
             # 未登录，重定向到认证主页
-            self.redirect_to_auth(current_path)
+            current_url = URL(request.url)
+            self.redirect_to_auth(current_url.path)
+
+        if min_permission_level_high is None:
+            # 不校验权限
+            return account
+
+        if (
+            (user_info.permission_level_high is None) or
+            (user_info.permission_level_high < min_permission_level_high)
+        ):
+            raise PermissionDeniedException()
 
         return account
 
 
-    def get_auth_dependency(self, current_path: str) -> Callable[[Request], Account]:
+    def get_current_account_dependence(
+        self,
+        min_permission_level_high: Optional[int] = None,
+    ) -> Callable[[Request], Account]:
         """
-        工厂方法，返回一个 FastAPI 依赖函数，用于验证请求的登录态。
-
-        Args:
-            current_path: 当前路径（如 "/users/me"），用于拼接完整 redirect URL
-
-        Returns:
-            FastAPI 依赖函数。该函数接受 Request 作为输入，Account 作为输出。
+        返回一个 FastAPI 的依赖函数，它的用法与 `.get_current_account` 相同，
+        但是会额外要求当前用户的大权限等级不低于 `min_permission_level_high` 。
         """
-        return partial(self._get_current_account, current_path)
+        return partial(
+            self.get_current_account,
+            min_permission_level_high=min_permission_level_high
+        )
+
+
+    async def get_target_user(
+        self,
+        request: Request
+    ) -> UserInfo:
+        """
+        FastAPI 依赖函数，根据路径中的动态参数名提取 user_id，并获取目标用户信息。
+
+        用法示例（开发者使用时）：
+            auth_client = AuthClient(..., user_id_path_key="custom_user_id")
+            
+            @app.get("/users/{custom_user_id}")
+            async def get_user(
+                current_account: Account = Depends(auth_client.get_current_account),
+                target_user: UserInfo = Depends(auth_client.get_target_user)
+            ):
+                return {"target": target_user}
+
+        Raises:
+            UpstreamUnavailableException: 认证服务不可用。
+            HTTPException: 未登录 / 登录已失效。重定向到登录页面。
+            UserNotFoundException: 没有找到目标用户。
+        """
+        # 验证当前登录态
+        current_account: Account = await self.get_current_account(request)
+
+        # 从路径中提取 user_id
+        user_id = request.path_params.get(self.user_id_path_key)
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"路径中缺少必需的参数: {self.user_id_path_key}"
+            )
+
+        # 用当前账号对象获取目标用户信息
+        return current_account.get_user_info(user_id)
+
+
+    async def get_manageable_target_user(
+        self,
+        request: Request
+    ) -> UserInfo:
+        """
+        FastAPI 依赖函数，获取当前登录用户有权限管理的目标用户信息。
+
+        适用于需要“用户管理”功能的端点（如修改、删除、查看其他用户详情），
+        在获取目标用户的同时进行权限校验，确保操作合法。
+
+        权限校验规则（按顺序）：
+            1. 首先验证当前请求的登录态（通过 get_current_account），
+               未登录会触发重定向到认证页。
+            2. 从路径参数中提取目标用户 ID（键名由 self.user_id_path_key 指定）。
+            3. 通过当前账号获取目标用户信息（调用 get_target_user）。
+            4. 判断目标用户是否为当前登录用户自身：
+                - 若是自身：允许访问（用户可管理自己的信息）。
+                - 若不是自身：要求当前用户的“大权限等级”（permission_level_high）
+                  **严格高于** 目标用户的“大权限等级”，否则抛出 PermissionDeniedException。
+
+        典型用法（在路由中作为依赖注入）：
+            auth_client = AuthClient(..., user_id_path_key="custom_user_id")
+
+            @app.delete("/users/{custom_user_id}")
+            async def delete_user(
+                current_account: Account = Depends(auth_client.get_current_account),
+                target_user: UserInfo = Depends(auth_client.get_manageable_target_user),
+            ):
+                # 此处 target_user 已经过权限校验，可直接执行删除逻辑
+                await delete_user_by_id(target_user.id)
+                return {"message": "用户已删除"}
+
+        Raises:
+            UnauthorizedException: 当前请求未登录（由 get_current_account 内部处理，
+                实际会抛出 HTTP 302 重定向，不会直接抛出该异常）。
+            HTTPException (400): 路径中缺少 user_id_path_key 指定的参数。
+            PermissionDeniedException: 当前用户权限不足以管理目标用户（非自身且权限不够高）。
+            UpstreamUnavailableException: 认证服务不可用（由内部调用引发）。
+        """
+        # 验证当前登录态
+        current_account: Account = await self.get_current_account(request)
+        # 获取目标用户信息（包含从路径提取 user_id）
+        target_user: UserInfo = await self.get_target_user(request)
+        # 获取当前用户自身信息
+        current_user: UserInfo = await current_account.get_user_info()
+
+        # 权限校验：非自身且权限不高则拒绝
+        if target_user.id != current_user.id:
+            if current_user.permission_level_high <= target_user.permission_level_high:
+                raise PermissionDeniedException()
+
+        return target_user

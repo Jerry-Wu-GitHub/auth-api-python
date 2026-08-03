@@ -13,7 +13,7 @@ import httpx
 from starlette import status
 
 from ..exceptions import (
-    AuthServerError,
+    UpstreamException,
     UnauthorizedException,
     ResourceNotFoundException,
     UserNotFoundException,
@@ -94,7 +94,7 @@ class Account:
 
         Raises:
             AuthServerUnavailable: 如果向认证微服务发送请求失败。
-            AuthServerError: 如果服务器响应内容不合法。
+            UpstreamException: 如果服务器响应内容不合法。
             UnauthorizedException: 如果 sid 无效，没有登录。
         """
         response = await self.auth_client.request(**kwargs)
@@ -109,7 +109,7 @@ class Account:
 
         Raises:
             AuthServerUnavailable: 如果向认证微服务发送请求失败。
-            AuthServerError: 如果服务器响应内容不合法。
+            UpstreamException: 如果服务器响应内容不合法。
             UnauthorizedException: 如果 sid 无效，没有登录。
             PermissionDeniedException: 如果权限不足。
             ResourceNotFoundException: 如果所访问的资源不存在。
@@ -125,7 +125,7 @@ class Account:
         try:
             resp_json = response.json()
         except json.JSONDecodeError as exp:
-            raise AuthServerError(f"Unexcepted json string: {response.text}") from exp
+            raise UpstreamException(f"Unexcepted json string: {response.text}") from exp
 
         if not isinstance(resp_json, dict):
             return resp_json
@@ -151,7 +151,7 @@ class Account:
 
     # ==== /users ====
 
-    async def get_info(self, user_id: Optional[str] = None, **kwargs) -> UserInfo:
+    async def get_user_info(self, user_id: Optional[str] = None, **kwargs) -> UserInfo:
         """
         获取用户基本信息。
 
@@ -165,7 +165,7 @@ class Account:
         Raises:
             AuthServerUnavailable: 如果向认证微服务发送请求失败。
             NotLoggedError: 如果 sid 无效，没有登录。
-            AuthServerError: 如果对后端返回的内容解析失败。
+            UpstreamException: 如果对后端返回的内容解析失败。
         """
         kwargs["method"] = "GET"
         kwargs["subpath"] = self._get_subpath(
@@ -178,16 +178,16 @@ class Account:
         try:
             resp_data = resp_json.get("data")
         except (json.JSONDecodeError, AttributeError) as error:
-            raise AuthServerError(f"Unexcepted json structure: {resp_json}") from error
+            raise UpstreamException(f"Unexcepted json structure: {resp_json}") from error
 
         if not (resp_data and isinstance(resp_data, dict)):
-            raise AuthServerError(f"Data not found: {resp_json}")
+            raise UpstreamException(f"Data not found: {resp_json}")
 
         if not (
             (id_  := resp_data.get("userId")  ) and
             (name := resp_data.get("username"))
         ):
-            raise AuthServerError(f"Unexcepted data structure: {resp_data}")
+            raise UpstreamException(f"Unexcepted data structure: {resp_data}")
 
         created_at_str    = resp_data.get("createdAt")
         last_login_at_str = resp_data.get("lastLoginAt")
@@ -196,7 +196,7 @@ class Account:
             created_at = datetime.fromisoformat(created_at_str) if created_at_str else None
             last_login_at = datetime.fromisoformat(last_login_at_str) if last_login_at_str else None
         except ValueError as error:
-            raise AuthServerError(f"Unexcepted time format: {resp_data}") from error
+            raise UpstreamException(f"Unexcepted time format: {resp_data}") from error
 
         return UserInfo(
             id               = id_,
@@ -227,7 +227,7 @@ class Account:
         Raises:
             AuthServerUnavailable: 如果向认证微服务发送请求失败。
             NotLoggedError: 如果 sid 无效，没有登录。
-            AuthServerError: 如果对后端返回的内容解析失败。
+            UpstreamException: 如果对后端返回的内容解析失败。
         """
         kwargs["method"] = "PATCH"
         kwargs["subpath"] = self._get_subpath(
@@ -247,19 +247,19 @@ class Account:
         try:
             resp_data = resp_json.get("data")
         except (json.JSONDecodeError, AttributeError) as error:
-            raise AuthServerError(f"Unexcepted json string: {resp_json}") from error
+            raise UpstreamException(f"Unexcepted json string: {resp_json}") from error
 
         if not (resp_data and isinstance(resp_data, dict)):
-            raise AuthServerError(f"Data not found: {resp_json}")
+            raise UpstreamException(f"Data not found: {resp_json}")
 
         if not (
             (theme        := resp_data.get("theme")      ) and
             (accent_color := resp_data.get("accentColor"))
         ):
-            raise AuthServerError(f"Unexcepted data structure: {resp_data}")
+            raise UpstreamException(f"Unexcepted data structure: {resp_data}")
 
         if not COLOR_PATTERN.fullmatch(accent_color):
-            raise AuthServerError(f"Unexcepted color format: {accent_color}")
+            raise UpstreamException(f"Unexcepted color format: {accent_color}")
 
         return Preferences(
             theme=theme,
@@ -285,7 +285,7 @@ class Account:
         Raises:
             AuthServerUnavailable: 如果向认证微服务发送请求失败。
             NotLoggedError: 如果 sid 无效，没有登录。
-            AuthServerError: 如果对后端返回的内容解析失败。
+            UpstreamException: 如果对后端返回的内容解析失败。
         """
         kwargs["method"] = "GET"
         kwargs["subpath"] = self._get_subpath(
@@ -315,7 +315,7 @@ class Account:
         Raises:
             AuthServerUnavailable: 如果向认证微服务发送请求失败。
             NotLoggedError: 如果 sid 无效，没有登录。
-            AuthServerError: 如果对后端返回的内容解析失败。
+            UpstreamException: 如果对后端返回的内容解析失败。
 
         Returns:
             Preferences: 修改后的用户偏好。
@@ -350,7 +350,7 @@ class Account:
         Raises:
             AuthServerUnavailable: 如果向认证微服务发送请求失败。
             NotLoggedError: 如果 sid 无效，没有登录。
-            AuthServerError: 如果对后端返回的内容解析失败。
+            UpstreamException: 如果对后端返回的内容解析失败。
         """
         kwargs["method"] = "DELETE"
         kwargs["subpath"] = self._get_subpath(

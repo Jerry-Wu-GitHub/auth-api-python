@@ -50,6 +50,24 @@ class UserInfo:
         default=None
     )
 
+    @property
+    def permission_level_high(self) -> Optional[int]:
+        """
+        权限等级的高位数码。
+        """
+        if self.permission_level is None:
+            return None
+        return (self.permission_level >> 4) & 0xF
+
+    @property
+    def permission_level_low(self) -> Optional[int]:
+        """
+        权限等级的低位数码。
+        """
+        if self.permission_level is None:
+            return None
+        return self.permission_level & 0xF
+
 
 @dataclass(frozen=True)
 class Preferences:

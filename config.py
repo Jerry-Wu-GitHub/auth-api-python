@@ -1,7 +1,8 @@
+from numbers import Real
 from typing import Dict
 
 # Cookie 的默认过期时间
-COOKIE_MAX_AGE = 604800
+COOKIE_MAX_AGE: Real = 604800 # 7 天，单位秒
 
 # Set-Cookie 接口的端点名
 CONFIRMATION_API_NAME = "confirmation"

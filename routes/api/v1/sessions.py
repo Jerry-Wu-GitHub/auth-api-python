@@ -2,7 +2,6 @@
 登录会话相关路由。
 """
 
-from functools import partial
 import json
 from typing import Optional, Union
 
@@ -11,7 +10,7 @@ from fastapi.responses import RedirectResponse
 from httpx import AsyncClient
 from yarl import URL
 
-from ....exceptions import AuthServerError
+from ....exceptions import UpstreamException
 from ....utils.cookies import set_session_cookie
 from ....config import CONFIRMATION_API_NAME, COOKIE_MAX_AGE
 
@@ -51,10 +50,10 @@ async def set_cookie(
         confirm_resp_json = confirm_resp.json()
         cookies = confirm_resp_json.get("data")
     except (json.decoder.JSONDecodeError, AttributeError) as error:
-        raise AuthServerError(f"Unexcepted json string: {confirm_resp.text}") from error
+        raise UpstreamException(f"Unexcepted json string: {confirm_resp.text}") from error
 
     if not (cookies and isinstance(cookies, list)):
-        raise AuthServerError(f"Data not found: {confirm_resp_json}")
+        raise UpstreamException(f"Data not found: {confirm_resp_json}")
 
     if redirect_uri:
         response = RedirectResponse(url=str(redirect_uri))
