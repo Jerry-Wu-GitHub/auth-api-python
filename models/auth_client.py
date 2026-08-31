@@ -7,8 +7,9 @@ from __future__ import annotations
 from functools import partial
 from typing import Callable, Optional, Self, Union
 
-import httpx
+from fake_useragent import UserAgent
 from fastapi import HTTPException, Request, APIRouter
+import httpx
 from starlette import status
 from yarl import URL
 
@@ -38,10 +39,11 @@ class AuthClient:
     def __init__(
         self,
         homepage: Union[str, URL],
-        auth_homepage: Union[str, URL],
         *,
-        user_id_path_key: str = "user_id",
+        auth_homepage: Optional[Union[str, URL]] = None,
         auth_api_version: str = "v1",
+        auth_api_base_url: Optional[Union[str, URL]] = None,
+        user_id_path_key: str = "user_id",
         http_client: Optional[httpx.AsyncClient] = None,
         **kwargs
     ):
@@ -49,21 +51,38 @@ class AuthClient:
         初始化认证客户端。
 
         Args:
-            homepage: 当前微服务的 Base URL
-            auth_homepage: 认证微服务主页 URL
-            user_id_path_key: 路径中表示 user_id 的占位符名
-            auth_api_version: 认证微服务的版本
+            homepage: 当前微服务的 Base URL。
+            auth_homepage: 认证微服务主页 URL。
+            auth_api_version: 认证微服务的版本，当未提供 `auth_api_base_url` 时有效。
+            auth_api_base_url: 认证服务 API 的 Base URL。
+            user_id_path_key: 路径中表示 user_id 的占位符名。
             http_client (httpx.AsyncClient): An HTTP client similar to `httpx.AsyncClient`, used for sending requests.
             kwargs: The initialization parameters passed to `http_client`.
+
+        `auth_homepage` 与 `auth_api_base_url` 中至少提供一者。
+            如果未提供 `auth_homepage`，则取 `auth_api_base_url` 的 `origin` 部分得到。
+            如果未提供 `auth_api_base_url`，则拼接 `auth_homepage / "api" / auth_api_version`。
         """
         self.homepage: URL = URL(homepage)
         self.user_id_path_key = user_id_path_key
 
         # 认证微服务
-        self.auth_homepage: URL = URL(auth_homepage)
-        self.auth_api_base_url = self.auth_homepage / "api" / auth_api_version
+        if not (auth_homepage or auth_api_base_url):
+            raise ValueError("Provide at least one of `auth_home_page` and `auth_api_base_url`.")
+
+        if auth_api_base_url:
+            # 提供了 auth_api_base_url
+            self.auth_api_base_url = URL(auth_api_base_url)
+            # 如果未提供 auth_homepage，则从 api base 推导
+            self.auth_homepage = URL(auth_homepage) if auth_homepage else self.auth_api_base_url.origin()
+        else:
+            # 仅提供了 auth_homepage
+            self.auth_homepage = URL(auth_homepage)
+            self.auth_api_base_url = self.auth_homepage / "api" / auth_api_version
 
         # HTTP Client
+        if "user-agent" not in kwargs:
+            kwargs["user-agent"] = UserAgent().random # 生成随机 UA
         self._http_client_is_local = http_client is None
         if self._http_client_is_local:
             http_client = httpx.AsyncClient(**kwargs)

@@ -16,7 +16,7 @@ from ....config import CONFIRMATION_API_NAME, COOKIE_MAX_AGE
 
 
 
-async def set_cookie(
+async def _set_cookie(
     confirmation_url: Union[str, URL],
     state: str,
     redirect_uri: Union[str, URL, None] = None,
@@ -26,6 +26,8 @@ async def set_cookie(
 ) -> Response:
     """
     设置用户指定的 Cookie。
+
+    此函数不会主动为请求添加伪造的 User-Agent 头。
 
     Args:
         confirmation_url: 用于获取 Cookie 配置的 URL。
@@ -93,7 +95,7 @@ def get_router(
     """
     router = APIRouter(prefix="/sessions", tags=["Sessions"])
     @router.get(f"/{CONFIRMATION_API_NAME}")
-    async def set_cookie_endpoint(
+    async def set_cookie(
         state: str,
         redirect_uri: Union[str, URL, None] = None,
     ) -> Response:
@@ -104,7 +106,7 @@ def get_router(
             state: 登录凭证。
             redirect_uri: 重定向目标。
         """
-        return await set_cookie(
+        return await _set_cookie(
             confirmation_url=confirmation_url,
             state=state,
             redirect_uri=redirect_uri,
