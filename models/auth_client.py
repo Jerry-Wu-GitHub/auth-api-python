@@ -81,8 +81,9 @@ class AuthClient:
             self.auth_api_base_url = self.auth_homepage / "api" / auth_api_version
 
         # HTTP Client
-        if "user-agent" not in kwargs:
-            kwargs["user-agent"] = UserAgent().random # 生成随机 UA
+        headers = kwargs.setdefault("headers", {})
+        if "user-agent" not in headers:
+            headers["user-agent"] = UserAgent().random # 生成随机 UA
         self._http_client_is_local = http_client is None
         if self._http_client_is_local:
             http_client = httpx.AsyncClient(**kwargs)
