@@ -166,8 +166,8 @@ class AuthClient:
         """
         引发一个重定向到登录页面的 HTTPException。
         """
-        redirect_url = str(current_url)
-        login_url = self.auth_homepage.with_query({"redirect": str(redirect_url)})
+        redirect = str(current_url)
+        login_url = self.auth_homepage.with_query({"redirect": redirect})
         raise HTTPException(
             status_code=status.HTTP_302_FOUND,
             headers={"Location": login_url},
@@ -205,7 +205,7 @@ class AuthClient:
 
         except UnauthorizedException:
             # 未登录，重定向到认证主页
-            current_url = URL(request.url)
+            current_url = URL(str(request.url))
             self.redirect_to_auth(current_url)
 
         if min_permission_level_high is None:
