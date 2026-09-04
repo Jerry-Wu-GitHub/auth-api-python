@@ -38,7 +38,6 @@ class AuthClient:
 
     def __init__(
         self,
-        homepage: Union[str, URL],
         *,
         auth_homepage: Optional[Union[str, URL]] = None,
         auth_api_version: str = "v1",
@@ -51,7 +50,6 @@ class AuthClient:
         初始化认证客户端。
 
         Args:
-            homepage: 当前微服务的 Base URL。
             auth_homepage: 认证微服务主页 URL。
             auth_api_version: 认证微服务的版本，当未提供 `auth_api_base_url` 时有效。
             auth_api_base_url: 认证服务 API 的 Base URL。
@@ -63,7 +61,6 @@ class AuthClient:
             如果未提供 `auth_homepage`，则取 `auth_api_base_url` 的 `origin` 部分得到。
             如果未提供 `auth_api_base_url`，则拼接 `auth_homepage / "api" / auth_api_version`。
         """
-        self.homepage: URL = URL(homepage)
         self.user_id_path_key = user_id_path_key
 
         # 认证微服务
@@ -164,12 +161,12 @@ class AuthClient:
 
     def redirect_to_auth(
         self,
-        current_path: str,
+        current_url: Union[str, URL],
     ) -> None:
         """
         引发一个重定向到登录页面的 HTTPException。
         """
-        redirect_url = self.homepage / current_path
+        redirect_url = str(current_url)
         login_url = self.auth_homepage.with_query({"redirect": str(redirect_url)})
         raise HTTPException(
             status_code=status.HTTP_302_FOUND,
@@ -209,7 +206,7 @@ class AuthClient:
         except UnauthorizedException:
             # 未登录，重定向到认证主页
             current_url = URL(request.url)
-            self.redirect_to_auth(current_url.path)
+            self.redirect_to_auth(current_url)
 
         if min_permission_level_high is None:
             # 不校验权限
